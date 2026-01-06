@@ -1,0 +1,93 @@
+
+# Model Card: Clasificador de Diabetes (Clasificador de Regresión Logística)
+
+## 1. Detalles del Modelo
+*   **Tipo de Modelo:** Clasificador de Regresión Logística
+*   **Algoritmo Principal:** Regresión Logística
+*   **Técnica de Balanceo de Clases:** SMOTE
+*   **Técnica de Calibración:** Regresión Isotónica (post-hoc)
+*   **Desarrollador:** Agente DSA Colab
+*   **Versión:** 1.0
+
+## 2. Uso Previsto
+*   **Uso Primario:**
+
+Este modelo está diseñado para predecir la probabilidad de diabetes en pacientes basándose en mediciones diagnósticas clave. Su objetivo es servir como una herramienta de apoyo para profesionales médicos en la identificación temprana de individuos en riesgo, permitiendo intervenciones preventivas o diagnósticos más profundos. Es adecuado para la población adulta.
+
+
+## 3. Factores Relevantes
+*   **Limitaciones:**
+
+1.  **Generalización:** Entrenado con el dataset Pima Indian Diabetes, puede que no generalice bien a poblaciones con características demográficas o clínicas significativamente diferentes (e.g., diferentes grupos étnicos, rangos de edad extremos).
+2.  **Características faltantes:** La ausencia de datos clave como 'Insulin' y 'SkinThickness' en el dataset original, imputados mediante KNN, podría introducir incertidumbre en las predicciones para pacientes con patologías donde estas variables son críticas.
+3.  **Interpretación:** Aunque se proporcionan explicaciones con SHAP, la interpretación de estas en el contexto clínico debe ser realizada por un experto para evitar conclusiones erróneas.
+
+*   **Riesgos de Mal Uso:**
+
+El modelo NO debe ser utilizado como una herramienta de diagnóstico definitivo. Las predicciones son probabilidades y no deben reemplazar el juicio clínico de un profesional de la salud. Un uso incorrecto podría llevar a diagnósticos erróneos, ansiedad innecesaria en los pacientes o falta de seguimiento adecuado.
+
+*   **Consideraciones Éticas:**
+
+1.  **Sesgos:** El dataset Pima Indian Diabetes podría tener sesgos inherentes relacionados con el grupo étnico y el género, lo que podría llevar a un rendimiento diferencial del modelo en subgrupos poblacionales no representados. Es crucial monitorear su desempeño en diversas poblaciones.
+2.  **Equidad y transparencia:** Se ha priorizado la explicabilidad mediante SHAP para comprender las influencias de las características en las predicciones individuales. Sin embargo, se debe ser consciente de que los modelos predictivos no están exentos de sesgos incluso con estas herramientas.
+3.  **Uso Previsto:** El modelo desarrollado con este dataset está diseñado para asistir a profesionales de la salud en la identificación temprana de individuos con riesgo de diabetes, no como una herramienta de diagnóstico definitivo. Las predicciones deben ser interpretadas en un contexto clínico más amplio y no deben reemplazar el juicio médico experto.
+4.  **Mal uso / Riesgos:** Un uso inadecuado o la confianza excesiva en las predicciones del modelo sin supervisión médica podría llevar a diagnósticos erróneos, ansiedad innecesaria en los pacientes o falta de seguimiento adecuado.
+
+
+## 4. Detalles de Despliegue
+```yaml
+platform: Google Cloud Platform (GCP)
+service: Vertex AI Prediction
+container_image: europe-west1-docker.pkg.dev/project-id/diabetes-model-repo/diabetes-prediction-model:v1.0
+scaling_policy: Autoscaling basado en carga (CPU utilization, RPS)
+security_measures: "Acceso restringido por IAM, encriptaci\xF3n en tr\xE1nsito y en\
+  \ reposo (CMK), VPC Service Controls"
+
+```
+
+## 5. Detalles de Monitorización
+```yaml
+service_level_objectives_slo:
+  latency_p95_ms: "p95 \u2264 100 ms en /predict"
+  availability_percentage: "\u2265 99.5 %/mes"
+  errors_5xx: "\u2264 0.1 %"
+  throughput: Dimensionado para picos previstos
+clinical_level_objectives_clo:
+  auroc_min: "\u2265 0.80 (o tu baseline)"
+  auprc_stability: estable (si la prevalencia es baja)
+  brier_score_max_margin: "\u2264 baseline \xD7 1.10 (margen del 10 %)"
+  calibration_curve_deviation_max: "Desviaci\xF3n media \u2264 5 puntos porcentuales\
+    \ frente a la diagonal (por deciles)"
+data_and_prediction_drift_slos:
+  data_quality_impossible_values: "> 99.9 % (sin valores f\xEDsicamente imposibles,\
+    \ p. ej., IMC = 0, presi\xF3n = 0)"
+  data_drift_psi_per_column: "En 30 d\xEDas m\xF3viles, PSI por columna clave \u2264\
+    \ 0.20 en \u2265 95 % de los d\xEDas."
+  prediction_drift_jsd: "JSD (base 2) diario \u2264 0.05 en ventana m\xF3vil de 30\
+    \ d\xEDas (vigilar divergencias frente al baseline)"
+operational_thresholds:
+  operational_threshold_t: "0.52 (obtenido del barrido de la curva PR, seleccionando\
+    \ el menor umbral cuya sensibilidad (recall) es \u2265 0.70)"
+  recall_at_threshold_t: "Mantener Recall@0.52 \u2265 0.70 (ventana m\xF3vil mensual)"
+  precision_at_threshold_t: Precision@0.52 sin deteriorarse > 10 % respecto al baseline
+  local_calibration_error_at_threshold: "Error local de calibraci\xF3n \u2264 5 pp\
+    \ alrededor del umbral"
+alerting_mechanism: "Cloud Monitoring con notificaciones a PagerDuty y Slack. Alertas\
+  \ basadas en SLOs: Latencia p95 alta (> 100 ms sostenidos); Brier empeora > 10 %\
+  \ vs baseline; Desviaci\xF3n por deciles de calibraci\xF3n > 5 pp cerca del umbral.\
+  \ Recall@0.52 cae por debajo de 0.70; PSI \u2265 0.30 en cualquier d\xEDa (o media\
+  \ 7d\xEDas > 0.20)."
+recalibration_and_retraining_plan:
+  proactive_strategy: "Recalibraci\xF3n peri\xF3dica (trimestralmente): ajustamos\
+    \ la isot\xF3nica con datos etiquetados recientes (asegurando suficientes casos\
+    \ por decil para evitar mesetas) y validamos curva de calibraci\xF3n y Brier.\
+    \ El candidato recalibrado se despliega primero en shadow/canary y se promueve\
+    \ si cumple SLOs."
+  reactive_strategy: "Condicionada por drift: Si se dispara alguna alerta (p. ej.,\
+    \ Recall@0.52 < 0.70, Brier > 1.10\xD7baseline, desviaci\xF3n por deciles > 5\
+    \ pp, o PSI>0.30 en glucosa/IMC), se ejecuta el pipeline de recalibraci\xF3n.\
+    \ Si la degradaci\xF3n persiste, se reentrena la regresi\xF3n log\xEDstica con\
+    \ datos actualizados. Este proceso est\xE1 documentado en la Model Card para garantizar\
+    \ trazabilidad."
+
+```
